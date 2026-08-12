@@ -500,7 +500,7 @@ static bool loadRom(const Rom* rom) {
   size_t size = 0;
   snprintf(content, sizeof(content), "%s", rom->path);
   pathExt(rom->path, ext, sizeof(ext));
-  if(isArchiveExt(ext)) {
+  if(isArchiveExt(ext) && !sys->zipIsRom) {
     char entry[512];
     if(!archiveBestEntry(rom->path, entry, sizeof(entry))) {
       toast(archiveReady() ? "Nothing runnable inside that archive" : "7-Zip is missing, can't open archives");
@@ -1181,12 +1181,22 @@ int main(int argc, char** argv) {
           fprintf(selftestLog, "corner %02x%02x%02x%02x  centre %02x%02x%02x%02x\n", px[0], px[1], px[2], px[3],
                   mid[0], mid[1], mid[2], mid[3]);
         }
-        // a frame with any colour in it. Alpha is skipped: it comes back opaque whether
-        // or not the core drew, so counting it would pass a blank screen
-        rc = 4;
-        for(int i = 0; px != NULL && i < w * h * bpp && rc != 0; i++) {
-          if(!(bpp == 4 && i % 4 == 3) && px[i] != 0) rc = 0;
+        // How much of the frame is actually lit, not just whether one byte is non-zero:
+        // a frame handed to SDL in an alpha-bearing format comes back fully transparent,
+        // and "any non-zero byte" waved that through as a pass. Alpha itself is skipped,
+        // since it reads opaque whether or not the core drew anything.
+        long lit = 0, total = (long) w * h;
+        for(long p = 0; px != NULL && p < total; p++) {
+          const uint8_t* pix = px + p * bpp;
+          int sum = 0;
+          for(int b = 0; b < bpp; b++) {
+            if(!(bpp == 4 && b == 3)) sum += pix[b];
+          }
+          if(sum > 8) lit++;
         }
+        double pct = total > 0 ? 100.0 * (double) lit / (double) total : 0.0;
+        fprintf(selftestLog, "lit %.2f%% of %ld pixels\n", pct, total);
+        rc = pct >= 0.5 ? 0 : 4; // a boot logo on black still clears this comfortably
       }
     }
     fprintf(selftestLog, "exit %d\n", rc);

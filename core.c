@@ -636,11 +636,15 @@ bool coreFlipped(void) {
 }
 
 // what corePixels() rows look like, ready for SDL_CreateTexture
+// None of libretro's software formats carry alpha -- the leading 0/X is unused, and
+// cores leave it at zero. Naming an SDL format that does have alpha makes every pixel
+// fully transparent: the frame saves as a blank bitmap and blends away to nothing on
+// screen. So each one maps to its alpha-less SDL twin.
 Uint32 corePixelFormat(void) {
-  if(!c.software) return SDL_PIXELFORMAT_ABGR8888; // gl gives us rgba bytes
+  if(!c.software) return SDL_PIXELFORMAT_ABGR8888; // gl gives us rgba bytes, alpha included
   if(c.swFormat == RETRO_PIXEL_FORMAT_RGB565) return SDL_PIXELFORMAT_RGB565;
-  if(c.swFormat == RETRO_PIXEL_FORMAT_0RGB1555) return SDL_PIXELFORMAT_ARGB1555; // the older cores
-  return SDL_PIXELFORMAT_ARGB8888;
+  if(c.swFormat == RETRO_PIXEL_FORMAT_0RGB1555) return SDL_PIXELFORMAT_RGB555;
+  return SDL_PIXELFORMAT_RGB888; // SDL's name for xrgb8888
 }
 
 int coreStateSize(void) {

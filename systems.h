@@ -15,6 +15,9 @@ typedef struct {
   int optionCount;
   const int* padMap; // 16 SDL_CONTROLLER_BUTTON_* -> retro id, NULL for the standard map
   float aspect;      // 0 to take whatever the core reports
+  // Arcade and MAME romsets ARE the zip -- dozens of chips in one file, which the core
+  // reads itself. Unpacking one and handing over a single member is meaningless there.
+  bool zipIsRom;
 } System;
 
 const System* systems(int* count);

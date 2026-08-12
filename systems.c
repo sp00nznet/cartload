@@ -153,12 +153,12 @@ static const System SYS[] = {
     {"DOS", "dosbox_pure_libretro.dll", "|conf|dosz|",
      "|dos|msdos|pcdos|", NOOPT, NULL, 0},
     {"Arcade", "fbneo_libretro.dll", "",
-     "|arcade|arcadefightcade|fbneo|neogeo|snkneogeo|", NOOPT, NULL, 0},
+     "|arcade|arcadefightcade|fbneo|neogeo|snkneogeo|", NOOPT, NULL, 0, true},
     // MAME is the MESS end of the deal: the machines nothing else emulates -- Apple II,
     // the Macs, the TI, the odd Sega board -- all live behind this one core.
     {"MAME", "mame_libretro.dll", "",
      "|mame|mamechd|appleii|apple2|applemacintosh|macintosh|ti|computers|segamodel2|segamodel3|"
-     "pioneerlaseractive|segachanneldata|", OPT(OPT_MAME), NULL, 0},
+     "pioneerlaseractive|segachanneldata|", OPT(OPT_MAME), NULL, 0, true},
 };
 #define SYS_COUNT ((int) (sizeof(SYS) / sizeof(SYS[0])))
 
