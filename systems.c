@@ -55,6 +55,11 @@ static const char* const OPT_N64[][2] = {
     {"mupen64plus-43screensize", "640x480"},       // battery-sane on a 7" panel
     {"mupen64plus-169screensize", "960x540"},
     {"mupen64plus-ThreadedRenderer", "False"}, // we hand the core exactly one GL context
+    // GLideN64 writes its shader cache out during unload by querying GL. Against a
+    // context it does not like, those queries come back as garbage and it writes a
+    // multi-gigabyte file -- 3.9GB here -- which the next launch tries to read back.
+    // Off entirely: the cost is a few seconds of shader compilation on first boot.
+    {"mupen64plus-EnableShadersStorage", "False"},
 };
 static const char* const OPT_PSP[][2] = {
     {"ppsspp_internal_resolution", "480x272"}, // 1x: an APU is not going to do better
