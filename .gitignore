@@ -1,0 +1,10 @@
+build/
+build-*/
+cores/
+testroms/
+selftest.log
+selftest.bmp
+smoke-*.log
+*.dll
+*.zip
+*.7z
