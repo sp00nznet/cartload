@@ -1,0 +1,36 @@
+// Version resource. Beyond being the right thing for a shipped binary, a statically
+// linked exe with no version info at all is a large input to Defender's ML heuristics --
+// the unsigned single-exe build was flagged Trojan:Win32/Bearfoos.A!ml without this.
+#include <winver.h>
+
+#define DECKEMU_VERSION 0, 1, 0, 0
+#define DECKEMU_VERSION_STR "0.1.0.0"
+
+VS_VERSION_INFO VERSIONINFO
+FILEVERSION DECKEMU_VERSION
+PRODUCTVERSION DECKEMU_VERSION
+FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
+FILEFLAGS 0x0L
+FILEOS VOS_NT_WINDOWS32
+FILETYPE VFT_APP
+FILESUBTYPE VFT2_UNKNOWN
+BEGIN
+  BLOCK "StringFileInfo"
+  BEGIN
+    BLOCK "040904b0" // US English, Unicode
+    BEGIN
+      VALUE "CompanyName", "sp00nz"
+      VALUE "FileDescription", "DeckEmu - multi-system libretro frontend for handhelds"
+      VALUE "FileVersion", DECKEMU_VERSION_STR
+      VALUE "InternalName", "deckemu"
+      VALUE "LegalCopyright", "MIT licensed"
+      VALUE "OriginalFilename", "deckemu.exe"
+      VALUE "ProductName", "DeckEmu"
+      VALUE "ProductVersion", DECKEMU_VERSION_STR
+    END
+  END
+  BLOCK "VarFileInfo"
+  BEGIN
+    VALUE "Translation", 0x409, 1200
+  END
+END

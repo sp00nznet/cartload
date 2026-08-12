@@ -22,6 +22,48 @@ Starts fullscreen. Cartridge saves, save states and core data live under
 `%APPDATA%\DeckEmu\`, split per system, and are always written locally — never back to
 the rom share, so a dropped connection mid-game can't corrupt them.
 
+## What actually works
+
+Every row below was run through `--selftest` against a rom from the real library and the
+resulting frame **looked at**, not just counted. Exit codes lie: a core's own error screen
+and a fully transparent frame both pass a naive check, and both did at one point.
+
+### Confirmed, picture on screen
+
+| System | Core | Verified with |
+| --- | --- | --- |
+| Super Nintendo | snes9x | `Super Mario World` hack, from a `.zip` |
+| Nintendo NES | nestopia | `10-Yard Fight`, from a `.zip` |
+| Nintendo 64 | mupen64plus-next | `Ocarina of Time`, loose `.z64`, hardware GLideN64 |
+| Sega Genesis | genesis_plus_gx | `3 Ninjas Kick Back`, from a `.zip` |
+| Sega Master System | genesis_plus_gx | No-Intro `.7z` |
+| Sega Game Gear | genesis_plus_gx | No-Intro `.7z` |
+| Game Boy | gambatte | loose `.gb` |
+| Game Boy Advance | mgba | `007 - Everything or Nothing`, from a `.zip` |
+| TurboGrafx-16 | mednafen_pce | `1943 Kai`, No-Intro `.7z` |
+| Commodore 64 | vice_x64 | No-Intro `.7z`, boots to the BASIC prompt |
+| Atari 2600 | stella2014 | `3-D Tic-Tac-Toe`, No-Intro `.7z` |
+| WonderSwan | mednafen_wswan | No-Intro `.7z` |
+| MAME / MESS | mame (0.289) | `pacman.zip`, attract mode |
+
+That covers loose roms, `.zip` and `.7z`, memory-loaded and full-path cores, software and
+hardware rendering — the paths that matter are all exercised.
+
+### Not working yet
+
+| System | Why |
+| --- | --- |
+| Neo Geo / Arcade (fbneo) | The romsets here are for a different FBNeo revision — it reports the game as known but every CRC as wrong. Use MAME for these, or re-dat the sets. |
+| Dreamcast, Sega CD, 3DO, PlayStation, PSP, Saturn | Need a BIOS this machine does not have yet. 3DO says so outright (`no BIOS ROM found`); PSP gets as far as creating 480x272 framebuffers and then crashes. |
+| Everything else in the table | Core is installed and the rom resolves, but no game from that system has been run yet. |
+
+### Known gaps
+
+- **Vertical arcade games display sideways.** `SET_ROTATION` is not honoured, so Pac-Man
+  and every other upright cabinet renders on its side.
+- PS3, Xbox 360, PS Vita and N-Gage folders in the library are ignored on purpose —
+  nothing in libretro runs them.
+
 ## The cores
 
 Run `getcores.ps1` once. It reads the core names out of `systems.c` and pulls each from

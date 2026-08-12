@@ -12,7 +12,7 @@ find_package(SDL2_ttf CONFIG REQUIRED)
 
 # Every emulation core is a libretro dll loaded at runtime, so nothing to compile here:
 # libretro.h is just the calling convention.
-add_executable(deckemu WIN32 main.c core.c systems.c archive.c)
+add_executable(deckemu WIN32 main.c core.c systems.c archive.c deckemu.rc)
 target_compile_definitions(deckemu PRIVATE _CRT_SECURE_NO_WARNINGS)
 target_link_libraries(deckemu PRIVATE opengl32)
 # the static ports export different target names than the dll ones
