@@ -5,7 +5,8 @@
 //
 // ponytail: readback (~1ms at 640x480 on an APU, unified memory) buys a completely
 // separate GL context for the core, so its state can't corrupt SDL_Renderer's and the
-// menu/toast overlay keeps working exactly like SnesDeck's. If that ever shows up in
+// menu/toast overlay keeps working exactly as it did in the single-system frontends
+// this grew out of. If that ever shows up in
 // the frame budget, share one context and glBlitFramebuffer instead.
 
 #define WIN32_LEAN_AND_MEAN
@@ -161,9 +162,7 @@ static bool envCb(unsigned cmd, void* data) {
 
 static bool envImpl(unsigned cmd, void* data) {
   switch(cmd) {
-    case RETRO_ENVIRONMENT_GET_CAN_DUPE:
-      *(bool*) data = true;
-      return true;
+    case RETRO_ENVIRONMENT_GET_CAN_DUPE: *(bool*) data = true; return true;
     case RETRO_ENVIRONMENT_SET_PIXEL_FORMAT:
       // all three: 0RGB1555 is what the older cores in the table still hand back
       c.swFormat = *(const enum retro_pixel_format*) data; // only matters on the software path
@@ -172,19 +171,13 @@ static bool envImpl(unsigned cmd, void* data) {
       *(uint64_t*) data = (1 << RETRO_DEVICE_JOYPAD) | (1 << RETRO_DEVICE_ANALOG);
       return true;
     case RETRO_ENVIRONMENT_GET_SYSTEM_DIRECTORY:
-    case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY:
-      *(const char**) data = c.systemDir;
-      return true;
+    case RETRO_ENVIRONMENT_GET_CORE_ASSETS_DIRECTORY: *(const char**) data = c.systemDir; return true;
     case RETRO_ENVIRONMENT_GET_SAVE_DIRECTORY:
       // the core writes its own .sra/.eep/.fla here, so battery saves need no code of ours
       *(const char**) data = c.saveDir;
       return true;
-    case RETRO_ENVIRONMENT_GET_LOG_INTERFACE:
-      ((struct retro_log_callback*) data)->log = logCb;
-      return true;
-    case RETRO_ENVIRONMENT_GET_LANGUAGE:
-      *(unsigned*) data = RETRO_LANGUAGE_ENGLISH;
-      return true;
+    case RETRO_ENVIRONMENT_GET_LOG_INTERFACE: ((struct retro_log_callback*) data)->log = logCb; return true;
+    case RETRO_ENVIRONMENT_GET_LANGUAGE: *(unsigned*) data = RETRO_LANGUAGE_ENGLISH; return true;
     case RETRO_ENVIRONMENT_GET_VARIABLE: {
       struct retro_variable* v = data;
       v->value = NULL;
@@ -229,9 +222,8 @@ static bool envImpl(unsigned cmd, void* data) {
       struct retro_hw_render_callback* hw = data;
       if(hw->context_type != RETRO_HW_CONTEXT_OPENGL && hw->context_type != RETRO_HW_CONTEXT_OPENGL_CORE) return false;
       if(coreVerbose) {
-        SDL_Log("hw_render type %u ver %u.%u depth %d stencil %d bottomleft %d", hw->context_type,
-                hw->version_major, hw->version_minor, (int) hw->depth, (int) hw->stencil,
-                (int) hw->bottom_left_origin);
+        SDL_Log("hw_render type %u ver %u.%u depth %d stencil %d bottomleft %d", hw->context_type, hw->version_major,
+                hw->version_minor, (int) hw->depth, (int) hw->stencil, (int) hw->bottom_left_origin);
       }
       c.hw = *hw;
       // the core reads these back out of the struct it handed us
@@ -329,18 +321,19 @@ static int16_t inputCb(unsigned port, unsigned device, unsigned index, unsigned 
 // --- setup -----------------------------------------------------------------
 
 static bool loadSymbols(char* err, size_t errLen) {
-#define SYM(name)                                                       \
-  *(void**) &r.name = SDL_LoadFunction(c.lib, "retro_" #name);          \
-  if(r.name == NULL) {                                                  \
-    snprintf(err, errLen, "core is missing retro_%s", #name);           \
-    return false;                                                       \
+#define SYM(name)                                                                                                      \
+  *(void**) &r.name = SDL_LoadFunction(c.lib, "retro_" #name);                                                         \
+  if(r.name == NULL) {                                                                                                 \
+    snprintf(err, errLen, "core is missing retro_%s", #name);                                                          \
+    return false;                                                                                                      \
   }
-  SYM(init) SYM(deinit) SYM(api_version) SYM(get_system_info) SYM(get_system_av_info)
-  SYM(set_environment) SYM(set_video_refresh) SYM(set_audio_sample) SYM(set_audio_sample_batch)
-  SYM(set_input_poll) SYM(set_input_state) SYM(set_controller_port_device) SYM(reset) SYM(run)
-  SYM(serialize_size) SYM(serialize) SYM(unserialize) SYM(load_game) SYM(unload_game)
+  SYM(init)
+  SYM(deinit) SYM(api_version) SYM(get_system_info) SYM(get_system_av_info) SYM(set_environment) SYM(set_video_refresh)
+      SYM(set_audio_sample) SYM(set_audio_sample_batch) SYM(set_input_poll) SYM(set_input_state)
+          SYM(set_controller_port_device) SYM(reset) SYM(run) SYM(serialize_size) SYM(serialize) SYM(unserialize)
+              SYM(load_game) SYM(unload_game)
 #undef SYM
-  return true;
+                  return true;
 }
 
 // The core asks for its GL context during retro_load_game, before we know the frame size,
@@ -365,20 +358,21 @@ static bool makeContext(char* err, size_t errLen) {
     snprintf(err, errLen, "no OpenGL context for the core: %s", SDL_GetError());
     return false;
   }
-#define GLSYM(name)                                            \
-  gl.name = (PFN_##name) SDL_GL_GetProcAddress("gl" #name);    \
-  if(gl.name == NULL) {                                        \
-    snprintf(err, errLen, "OpenGL is missing gl" #name);        \
-    SDL_GL_MakeCurrent(c.window, c.uiCtx);                     \
-    return false;                                              \
+#define GLSYM(name)                                                                                                    \
+  gl.name = (PFN_##name) SDL_GL_GetProcAddress("gl" #name);                                                            \
+  if(gl.name == NULL) {                                                                                                \
+    snprintf(err, errLen, "OpenGL is missing gl" #name);                                                               \
+    SDL_GL_MakeCurrent(c.window, c.uiCtx);                                                                             \
+    return false;                                                                                                      \
   }
-  GLSYM(GenFramebuffers) GLSYM(BindFramebuffer) GLSYM(DeleteFramebuffers) GLSYM(FramebufferTexture2D)
-  GLSYM(GenRenderbuffers) GLSYM(BindRenderbuffer) GLSYM(DeleteRenderbuffers) GLSYM(RenderbufferStorage)
-  GLSYM(FramebufferRenderbuffer) GLSYM(CheckFramebufferStatus) GLSYM(BindBuffer)
+  GLSYM(GenFramebuffers)
+  GLSYM(BindFramebuffer) GLSYM(DeleteFramebuffers) GLSYM(FramebufferTexture2D) GLSYM(GenRenderbuffers)
+      GLSYM(BindRenderbuffer) GLSYM(DeleteRenderbuffers) GLSYM(RenderbufferStorage) GLSYM(FramebufferRenderbuffer)
+          GLSYM(CheckFramebufferStatus) GLSYM(BindBuffer)
 #undef GLSYM
-  // deliberately left current: the core keeps initialising GL for the rest of
-  // retro_load_game, and it must see its own context when it does
-  return true;
+      // deliberately left current: the core keeps initialising GL for the rest of
+      // retro_load_game, and it must see its own context when it does
+      return true;
 }
 
 static bool makeFramebuffer(int w, int h, char* err, size_t errLen) {

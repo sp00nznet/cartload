@@ -52,6 +52,13 @@ static bool run7z(const char* args, uint8_t** out, size_t* outSize, char* err, s
     snprintf(err, errLen, "7-Zip is not installed, so archives can't be opened");
     return false;
   }
+  char cmd[2048];
+  // a truncated command line is a different command: it would run 7-Zip against half a
+  // path, so say so instead
+  if(snprintf(cmd, sizeof(cmd), "\"%s\" %s", exe, args) >= (int) sizeof(cmd)) {
+    snprintf(err, errLen, "that path is too long for a 7-Zip command line");
+    return false;
+  }
   HANDLE readEnd = NULL, writeEnd = NULL;
   SECURITY_ATTRIBUTES sa = {sizeof(sa), NULL, TRUE};
   if(!CreatePipe(&readEnd, &writeEnd, &sa, 1 << 20)) {
@@ -60,8 +67,6 @@ static bool run7z(const char* args, uint8_t** out, size_t* outSize, char* err, s
   }
   SetHandleInformation(readEnd, HANDLE_FLAG_INHERIT, 0); // only the child keeps the write end
 
-  char cmd[2048];
-  snprintf(cmd, sizeof(cmd), "\"%s\" %s", exe, args);
   STARTUPINFOA si;
   memset(&si, 0, sizeof(si));
   si.cb = sizeof(si);
@@ -137,7 +142,7 @@ bool archiveBestEntry(const char* archive, char* entry, size_t n) {
   char bestRom[512] = {0}, bestAny[512] = {0}, current[512] = {0};
   long long bestRomSize = -1, bestAnySize = -1;
   bool found = false;
-  for(char* line = (char*) listing, *end = (char*) listing + size; line < end;) {
+  for(char *line = (char*) listing, *end = (char*) listing + size; line < end;) {
     char* nl = memchr(line, '\n', (size_t) (end - line));
     size_t len = nl != NULL ? (size_t) (nl - line) : (size_t) (end - line);
     while(len > 0 && (line[len - 1] == '\r' || line[len - 1] == ' ')) len--;

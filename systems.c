@@ -72,7 +72,7 @@ static const char* const OPT_PSX[][2] = {
     {"swanstation_GPU_Renderer", "Software"}, // hw renderers want a context per backend
 };
 static const char* const OPT_MAME[][2] = {
-    {"mame_softlists_enable", "enabled"},  // MESS side: computers boot from software lists
+    {"mame_softlists_enable", "enabled"}, // MESS side: computers boot from software lists
     {"mame_softlists_auto_media", "enabled"},
     {"mame_boot_from_cli", "enabled"},
 };
@@ -82,6 +82,8 @@ static const char* const OPT_MAME[][2] = {
 // Extensions listed here must be ones that *identify* the system. Shared ones
 // (bin/iso/cue/chd/rom/zip) are deliberately left out of most rows: they resolve by
 // folder name instead, which is how the library is actually organised.
+// one machine per row, hand wrapped; reflowing this table makes it unreadable
+// clang-format off
 static const System SYS[] = {
     // ponytail: nestopia and stella2014 over the more accurate mesen and stella. Both of
     // those refused every rom on this shelf out of the box; these two take them all and
@@ -160,6 +162,7 @@ static const System SYS[] = {
      "|mame|mamechd|appleii|apple2|applemacintosh|macintosh|ti|computers|segamodel2|segamodel3|"
      "pioneerlaseractive|segachanneldata|", OPT(OPT_MAME), NULL, 0, true},
 };
+// clang-format on
 #define SYS_COUNT ((int) (sizeof(SYS) / sizeof(SYS[0])))
 
 const int* systemPadMap(const System* s) {

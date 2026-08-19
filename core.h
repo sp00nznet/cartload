@@ -21,9 +21,9 @@ bool coreOpen(const char* dllPath, SDL_Window* window, const char* systemDir, co
               const char* const (*options)[2], int optionCount, char* err, size_t errLen);
 void coreClose(void);
 bool coreIsOpen(void);
-const char* coreName(void);     // "mupen64plus-next 2.7", once the dll is open
-bool coreNeedFullpath(void);    // core reads the file itself; hand it a real path
-extern bool coreVerbose;        // pass the core's chatter through, not just its warnings
+const char* coreName(void);  // "mupen64plus-next 2.7", once the dll is open
+bool coreNeedFullpath(void); // core reads the file itself; hand it a real path
+extern bool coreVerbose;     // pass the core's chatter through, not just its warnings
 
 // `data` may be NULL, in which case the core is given `path` to read for itself.
 bool coreLoadGame(const char* path, const void* data, size_t size, char* err, size_t errLen);

@@ -7,10 +7,10 @@
 #include <stddef.h>
 
 typedef struct {
-  const char* name;    // display name, also the save/state folder
-  const char* core;    // dll name, looked for in cores\ beside the exe
-  const char* exts;    // "|z64|n64|v64|" lowercase, pipe delimited
-  const char* aliases; // folder names that mean this system, normalised (see normalise())
+  const char* name;                // display name, also the save/state folder
+  const char* core;                // dll name, looked for in cores\ beside the exe
+  const char* exts;                // "|z64|n64|v64|" lowercase, pipe delimited
+  const char* aliases;             // folder names that mean this system, normalised (see normalise())
   const char* const (*options)[2]; // core options to pin, NULL for none
   int optionCount;
   const int* padMap; // 16 SDL_CONTROLLER_BUTTON_* -> retro id, NULL for the standard map

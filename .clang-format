@@ -1,0 +1,17 @@
+# The style the source was already written in; committed so it stays that way.
+BasedOnStyle: LLVM
+ColumnLimit: 120
+IndentWidth: 2
+ContinuationIndentWidth: 4
+PointerAlignment: Left
+SpaceBeforeParens: Never
+AllowShortIfStatementsOnASingleLine: AllIfsAndElse
+AllowShortCaseLabelsOnASingleLine: true
+AllowShortLoopsOnASingleLine: true
+AllowShortBlocksOnASingleLine: Empty
+AllowShortFunctionsOnASingleLine: Empty
+BreakBeforeBraces: Attach
+SortIncludes: false
+SpaceAfterCStyleCast: true
+IndentCaseLabels: true
+AlignAfterOpenBracket: Align
