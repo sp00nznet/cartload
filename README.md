@@ -14,9 +14,11 @@ Every machine is somebody else's emulator, loaded as a libretro core the moment 
 game — the way MAME/MESS puts many machines behind one program, except each machine here
 gets the core that is best at it.
 
-It descends from [SnesDeck](https://github.com/sp00nznet/snesdeck) and
-[N64Deck](https://github.com/sp00nznet/n64deck), which were this same frontend with one
-system each.
+**This is a menu on top of decades of other people's work.** snes9x, nestopia,
+mupen64plus-next, Genesis Plus GX, gambatte, mGBA, Mednafen, MAME, DOSBox and the rest do
+the emulation; libretro makes them all speak one language; SDL draws the window and 7-Zip
+opens the archives. Cartload draws lists and hands them a file.
+[Credit where it is due](docs/credits.md).
 
 - **86,000 roms across 27 machines scan in about four seconds** over SMB, and the list
   scrolls at 60fps with momentum.
@@ -61,6 +63,21 @@ to hit with a thumb while the game waits underneath.
    work. It remembers.
 5. Tap **Cores** and grab whatever is missing.
 
+## Two things to know before you run it
+
+**Windows will warn about the exe.** It is unsigned — a code signing certificate costs
+more per year than this project has ever cost — so SmartScreen shows "Windows protected
+your PC" on first run. *More info* → *Run anyway*, or build it yourself from source and
+skip the question. The version resource is filled in properly, which is what keeps
+Defender's heuristics off a statically linked binary, but it is no substitute for a
+signature.
+
+**Cores are third-party binaries, downloaded on request.** Tapping a row on the Cores
+screen fetches an unsigned DLL over HTTPS from the libretro nightly buildbot and loads it
+into this process, which is exactly as much trust as `getcores.ps1` always asked for, and
+the same trust RetroArch's own core downloader asks for. If that is not a trade you want,
+build the cores yourself and drop them in `cores\` — nothing else changes.
+
 ## What actually runs
 
 Thirteen machines are confirmed working with a **frame that was looked at**, not just an
@@ -90,9 +107,13 @@ Keyboard equivalents and the full libretro mapping are in [docs/usage.md](docs/u
 - [Using Cartload](docs/usage.md) — rom library, cores, archives, saves, full controls
 - [What runs](docs/systems.md) — verified systems, what's broken, how a rom finds its machine
 - [Building](docs/build.md) — cmake, the single-exe build, and the selftest
+- [Credits](docs/credits.md) — every core, and who actually wrote the emulator
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The cores are not part of this project; each is under its
-own license and is downloaded from the libretro buildbot at your request. Bring your own
-roms.
+Cartload itself is MIT — see [LICENSE](LICENSE). `libretro.h` is included unmodified under
+its own MIT license, © 2010-2024 The RetroArch team.
+
+The cores are **not** part of this project. Each has its own license — several are GPL,
+and some, snes9x among them, are not free for commercial use — and each is downloaded from
+the libretro buildbot at your request, never bundled here. Bring your own roms.

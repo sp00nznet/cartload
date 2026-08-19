@@ -13,6 +13,15 @@ up yet when Cartload starts, it keeps your library setting rather than silently 
 back, and says so — connect the drive and tap the message to rescan. Scanning runs on a
 worker thread, so an unreachable share (~20s to time out) leaves the window responsive.
 
+Windows' 260-character path limit still applies: a folder whose full path is longer than
+that cannot be opened at all, and the usual result elsewhere is a library that is quietly
+missing games. Cartload counts those folders instead and says so — *"3 folders could not
+be read - path too long, or no access"*. Deeply nested full sets are where it bites.
+
+Two roms of the same machine with the same filename in different folders — a full MAME set
+dropped inside another one does this thousands of times — get the folder name appended, so
+the rows can be told apart and their save states do not overwrite each other.
+
 A library of 86,000 roms across 27 machines scans in about four seconds over SMB and
 scrolls at 60fps, because the list is one flat array and only the visible rows ever become
 textures.
