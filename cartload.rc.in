@@ -3,12 +3,10 @@
 // the unsigned single-exe build was flagged Trojan:Win32/Bearfoos.A!ml without this.
 #include <winver.h>
 
-#define CARTLOAD_VERSION 0, 1, 0, 0
-#define CARTLOAD_VERSION_STR "0.1.0.0"
-
+// Generated from this file by CMake: the version lives in project() and nowhere else.
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION CARTLOAD_VERSION
-PRODUCTVERSION CARTLOAD_VERSION
+FILEVERSION @PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, 0
+PRODUCTVERSION @PROJECT_VERSION_MAJOR@, @PROJECT_VERSION_MINOR@, @PROJECT_VERSION_PATCH@, 0
 FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 FILEFLAGS 0x0L
 FILEOS VOS_NT_WINDOWS32
@@ -21,12 +19,12 @@ BEGIN
     BEGIN
       VALUE "CompanyName", "sp00nz"
       VALUE "FileDescription", "Cartload - multi-system libretro frontend for handhelds"
-      VALUE "FileVersion", CARTLOAD_VERSION_STR
+      VALUE "FileVersion", "@PROJECT_VERSION@.0"
       VALUE "InternalName", "cartload"
       VALUE "LegalCopyright", "MIT licensed"
       VALUE "OriginalFilename", "cartload.exe"
       VALUE "ProductName", "Cartload"
-      VALUE "ProductVersion", CARTLOAD_VERSION_STR
+      VALUE "ProductVersion", "@PROJECT_VERSION@.0"
     END
   END
   BLOCK "VarFileInfo"

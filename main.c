@@ -1355,7 +1355,14 @@ static LONG WINAPI selftestCrashCb(EXCEPTION_POINTERS* ep) {
 static void fatal(const char* what) {
   char msg[512];
   snprintf(msg, sizeof(msg), "%s: %s", what, SDL_GetError());
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Cartload", msg, NULL);
+  // A message box waits for a click, and on a build machine there is nobody to click it:
+  // the job would sit there until the runner timed out instead of failing.
+  if(selftestLog != NULL) {
+    fprintf(selftestLog, "FATAL %s\n", msg);
+    fclose(selftestLog);
+  } else {
+    SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Cartload", msg, NULL);
+  }
   exit(1);
 }
 
@@ -1399,6 +1406,10 @@ int main(int argc, char** argv) {
                                   (g.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
   if(g.window == NULL) fatal("Could not create window");
   g.ren = SDL_CreateRenderer(g.window, -1, SDL_RENDERER_ACCELERATED | SDL_RENDERER_PRESENTVSYNC);
+  // A machine with no gpu driver worth the name -- a build runner, a fresh VM -- has no
+  // accelerated renderer. The menus are a few rectangles and some text; software draws
+  // them fine, and the cores are the part that actually needs GL.
+  if(g.ren == NULL) g.ren = SDL_CreateRenderer(g.window, -1, SDL_RENDERER_SOFTWARE);
   if(g.ren == NULL) fatal("Could not create renderer");
   SDL_ShowCursor(SDL_DISABLE);
 
@@ -1434,6 +1445,7 @@ int main(int argc, char** argv) {
     // exit 0 pass, 2 no core for that rom, 3 rom would not load, 4 the core drew nothing.
     // With no rom it just inventories the shelf, which is the useful thing after a
     // core download: it says which systems can actually be played right now.
+    fprintf(selftestLog, "Cartload %s\n", CARTLOAD_VERSION);
     int count = 0, have = 0;
     const System* all = systems(&count);
     for(int i = 0; i < count; i++) {

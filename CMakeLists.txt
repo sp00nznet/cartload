@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.21)
-project(cartload C)
+project(cartload VERSION 0.1.0 LANGUAGES C) # the one place the version number lives
 set(CMAKE_C_STANDARD 17)
 
 # a static triplet gives one self-contained exe (see README: "Single exe build")
@@ -12,8 +12,9 @@ find_package(SDL2_ttf CONFIG REQUIRED)
 
 # Every emulation core is a libretro dll loaded at runtime, so nothing to compile here:
 # libretro.h is just the calling convention.
-add_executable(cartload WIN32 main.c core.c systems.c archive.c cartload.rc)
-target_compile_definitions(cartload PRIVATE _CRT_SECURE_NO_WARNINGS)
+configure_file(cartload.rc.in "${CMAKE_CURRENT_BINARY_DIR}/cartload.rc" @ONLY)
+add_executable(cartload WIN32 main.c core.c systems.c archive.c "${CMAKE_CURRENT_BINARY_DIR}/cartload.rc")
+target_compile_definitions(cartload PRIVATE _CRT_SECURE_NO_WARNINGS CARTLOAD_VERSION="${PROJECT_VERSION}")
 target_link_libraries(cartload PRIVATE opengl32 urlmon) # urlmon: the in-app core downloader
 # the static ports export different target names than the dll ones
 if(TARGET SDL2::SDL2)

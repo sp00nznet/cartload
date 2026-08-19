@@ -25,6 +25,20 @@ cmake -B build-static -G "Visual Studio 17 2022" -A x64 ^
 cmake --build build-static --config Release
 ```
 
+## The version number
+
+It lives in `project(cartload VERSION ...)` in `CMakeLists.txt` and nowhere else. CMake
+generates `cartload.rc` from `cartload.rc.in`, and passes the same string to the code as
+`CARTLOAD_VERSION`, so the exe's properties, the selftest log and the release tag cannot
+drift apart. CI refuses to publish a `vX.Y.Z` tag that disagrees with it.
+
+## CI
+
+`.github/workflows/ci.yml` builds the static single-exe on every push and pull request,
+runs `--selftest` on the result, and uploads the zip as an artifact. Pushing a `v*` tag
+publishes that zip as a release. vcpkg's binary cache is what keeps a from-source SDL2
+build off the critical path.
+
 ## The source
 
 Six files, and every one of them is one job:

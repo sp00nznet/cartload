@@ -1,0 +1,76 @@
+name: build
+
+on:
+  push:
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: write # needed to attach the zip to a release
+
+jobs:
+  windows:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Building SDL2 + SDL2_ttf + freetype static from source is most of the job's
+      # wall clock. vcpkg's binary cache turns the second run into a copy.
+      - name: Cache vcpkg binaries
+        uses: actions/cache@v4
+        with:
+          path: ~\AppData\Local\vcpkg\archives
+          key: vcpkg-${{ runner.os }}-sdl2-ttf-static-v1
+
+      - name: Install SDL2 (static triplet)
+        run: vcpkg install sdl2:x64-windows-static sdl2-ttf:x64-windows-static
+
+      # No -G: whichever Visual Studio the runner image ships is the right one.
+      - name: Configure
+        run: >
+          cmake -B build -A x64
+          -DCMAKE_TOOLCHAIN_FILE="$env:VCPKG_INSTALLATION_ROOT/scripts/buildsystems/vcpkg.cmake"
+          -DVCPKG_TARGET_TRIPLET=x64-windows-static
+
+      - name: Build
+        run: cmake --build build --config Release
+
+      # The exe is a WIN32 subsystem app, so the shell does not wait for it and there is
+      # no stdout to read: run it detached, wait, then read the log it wrote. With no
+      # cores installed this inventories an empty shelf, which still exercises startup,
+      # the window, the renderer and the system table -- the parts that break silently.
+      - name: Selftest
+        working-directory: build/Release
+        run: |
+          $p = Start-Process .\cartload.exe -ArgumentList '--selftest' -PassThru -Wait
+          Get-Content selftest.log
+          if ($p.ExitCode -ne 0) { throw "selftest exited $($p.ExitCode)" }
+
+      - name: Package
+        run: |
+          New-Item -ItemType Directory dist | Out-Null
+          Copy-Item build\Release\cartload.exe, START-HERE.txt, LICENSE dist\
+          Compress-Archive -Path dist\* -DestinationPath cartload-windows-x64.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cartload-windows-x64
+          path: cartload-windows-x64.zip
+
+      # A tag that disagrees with the version baked into the exe would ship a binary
+      # whose properties lie about which release it is.
+      - name: Tag matches the version in CMakeLists
+        if: startsWith(github.ref, 'refs/tags/v')
+        run: |
+          $ver = (Select-String -Path CMakeLists.txt -Pattern 'project\(cartload VERSION ([0-9.]+)').Matches[0].Groups[1].Value
+          if ("v$ver" -ne "${{ github.ref_name }}") { throw "tag ${{ github.ref_name }} but CMakeLists says $ver" }
+
+      # Only on a version tag: publish so people can download without building, or
+      # trusting a binary from anywhere else.
+      - uses: softprops/action-gh-release@v2
+        if: startsWith(github.ref, 'refs/tags/v')
+        with:
+          files: cartload-windows-x64.zip
+          generate_release_notes: true

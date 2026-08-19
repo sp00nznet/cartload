@@ -1,5 +1,5 @@
-Cartload 0.1.0 - single exe build
-================================
+Cartload - single exe build
+===========================
 
 1. Copy this whole folder to the handheld. Keep cores\ next to cartload.exe.
 2. Run cartload.exe. It starts fullscreen on the systems screen.
