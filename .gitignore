@@ -8,3 +8,4 @@ smoke-*.log
 *.dll
 *.zip
 *.7z
+shot-*.bmp

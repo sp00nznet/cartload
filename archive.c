@@ -17,7 +17,7 @@ static bool searched;
 static const char* find7z(void) {
   if(searched) return sevenZip[0] != '\0' ? sevenZip : NULL;
   searched = true;
-  // next to the exe first, so a portable 7za.exe beside DeckEmu wins over whatever is installed
+  // next to the exe first, so a portable 7za.exe beside Cartload wins over whatever is installed
   char* base = SDL_GetBasePath();
   const char* candidates[] = {"%s7za.exe", "%s7z.exe", NULL};
   for(int i = 0; candidates[i] != NULL; i++) {

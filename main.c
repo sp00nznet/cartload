@@ -1,4 +1,4 @@
-// DeckEmu - touch + gamepad frontend for a shelf of libretro cores, aimed at Windows
+// Cartload - touch + gamepad frontend for a shelf of libretro cores, aimed at Windows
 // handhelds. Systems screen -> library (tap/drag to pick a rom) -> game -> in-game menu.
 //
 // One frontend, many machines: systems.c says which core runs what, core.c loads that
@@ -9,6 +9,7 @@
 #define COBJMACROS
 #include <windows.h>
 #include <shobjidl.h>
+#include <urlmon.h>
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -30,6 +31,7 @@
 // A full shelf runs to six figures of files (54k MAME zips alone here), so the list is
 // heap grown rather than a fixed array -- a small library still costs a small array.
 #define MAX_ROMS 250000
+#define MAX_SYSTEMS 64 // the table in systems.c, with room to grow
 #define PATHLEN 512
 #define ROMPATH 400
 #ifndef STATUS_HEAP_CORRUPTION
@@ -47,7 +49,7 @@ typedef struct {
   int tw, th;
 } Rom;
 
-enum { MODE_SYSTEMS, MODE_LIBRARY, MODE_GAME, MODE_MENU };
+enum { MODE_SYSTEMS, MODE_LIBRARY, MODE_GAME, MODE_MENU, MODE_CORES };
 
 static const char* MENU_ITEMS[] = {"Resume", "Save state", "Load state", "Reset", "Library", "Quit"};
 #define MENU_COUNT 6
@@ -76,7 +78,7 @@ static struct {
   struct {
     const System* sys; // NULL for the "All systems" row
     int count;
-  } present[64];
+  } present[MAX_SYSTEMS];
   int presentCount;
 
   const System* openSys; // whose core is loaded right now, NULL for none
@@ -150,7 +152,7 @@ static void drawText(TTF_Font* f, const char* s, int x, int y, SDL_Color c, int 
 static void drawStatus(const char* line1, const char* line2) {
   fillRect(0, 0, g.W, g.H, 18, 20, 28, 255);
   fillRect(0, 0, g.W, g.headerH, 26, 30, 44, 255);
-  drawText(g.fTitle, "DeckEmu", g.W / 24, (g.headerH - g.H / 13) / 2, COL_TEXT, 0);
+  drawText(g.fTitle, "Cartload", g.W / 24, (g.headerH - g.H / 13) / 2, COL_TEXT, 0);
   drawText(g.fRow, line1, g.W / 2, g.H / 2 - g.H / 16, COL_TEXT, 1);
   drawText(g.fSmall, line2, g.W / 2, g.H / 2 + g.H / 40, COL_DIM, 1);
 }
@@ -287,11 +289,16 @@ static void rebuildView(void) {
 
 // the row list the current screen is showing
 static int rowCount(void) {
+  if(g.mode == MODE_CORES) {
+    int n = 0;
+    systems(&n);
+    return n;
+  }
   return g.mode == MODE_SYSTEMS ? g.presentCount : g.viewCount;
 }
 
 static bool isListMode(void) {
-  return g.mode == MODE_SYSTEMS || g.mode == MODE_LIBRARY;
+  return g.mode == MODE_SYSTEMS || g.mode == MODE_LIBRARY || g.mode == MODE_CORES;
 }
 
 // worker thread: clearRoms() has already run, so no textures exist to free here
@@ -458,6 +465,118 @@ static bool findCoreDll(const char* name, char* out, size_t n) {
   return false;
 }
 
+// --- fetching cores --------------------------------------------------------
+//
+// The same thing getcores.ps1 does, from inside the app: one zip per core on the
+// libretro nightly buildbot, holding just the dll. The script gave no feedback on the
+// handheld, and this screen is the feedback -- it says what is installed before a game
+// refuses to start rather than after.
+
+enum { CS_MISSING, CS_HAVE, CS_QUEUED, CS_GETTING, CS_FAIL };
+static volatile unsigned char coreState[MAX_SYSTEMS];
+static SDL_atomic_t coreFetching;
+static uint32_t coreGetStart;
+
+static void coresDirPath(char* out, size_t n) {
+  char* base = SDL_GetBasePath();
+  snprintf(out, n, "%scores", base ? base : ".\\");
+  SDL_free(base);
+}
+
+// Installed or not, for every row. A queued or in-flight row belongs to the worker,
+// so leave those alone; it flips them itself when the download lands.
+static void refreshCoreStates(void) {
+  int count = 0;
+  const System* all = systems(&count);
+  if(count > MAX_SYSTEMS) count = MAX_SYSTEMS;
+  char dll[PATHLEN];
+  for(int i = 0; i < count; i++) {
+    if(coreState[i] == CS_QUEUED || coreState[i] == CS_GETTING) continue;
+    bool have = findCoreDll(all[i].core, dll, sizeof(dll));
+    // a failure stays on screen until that row is tried again
+    if(have || coreState[i] != CS_FAIL) coreState[i] = have ? CS_HAVE : CS_MISSING;
+  }
+}
+
+static bool fetchCore(const char* core) {
+  char url[320], zip[PATHLEN], dir[PATHLEN], dll[PATHLEN], err[256];
+  // the query string busts urlmon's cache, which would otherwise hand back the copy it
+  // downloaded last time instead of tonight's build
+  snprintf(url, sizeof(url), "https://buildbot.libretro.com/nightly/windows/x86_64/latest/%s.zip?%u", core,
+           (unsigned) SDL_GetTicks());
+  snprintf(zip, sizeof(zip), "%s\\%s.zip", g.tmpDir, core);
+  DeleteFileA(zip);
+  if(URLDownloadToFileA(NULL, url, zip, 0, NULL) != S_OK) return false;
+  coresDirPath(dir, sizeof(dir));
+  CreateDirectoryA(dir, NULL);
+  // only now that the download is in hand: archiveExtractToFile keeps an existing file,
+  // and a re-fetch is meant to replace it. A failed download must not cost the old core.
+  snprintf(dll, sizeof(dll), "%s\\%s", dir, core);
+  DeleteFileA(dll);
+  bool ok = archiveExtractToFile(zip, core, dir, dll, sizeof(dll), err, sizeof(err));
+  DeleteFileA(zip);
+  return ok;
+}
+
+// One download at a time, the rest of the taps wait their turn: a handheld's wifi does
+// not go faster for running six at once, and the ui stays alive either way.
+static int coreFetchWorker(void* unused) {
+  (void) unused;
+  CoInitializeEx(NULL, COINIT_APARTMENTTHREADED);
+  for(;;) {
+    int count = 0;
+    const System* all = systems(&count);
+    if(count > MAX_SYSTEMS) count = MAX_SYSTEMS;
+    int i = -1;
+    for(int k = 0; k < count && i < 0; k++)
+      if(coreState[k] == CS_QUEUED) i = k;
+    if(i < 0) {
+      SDL_AtomicSet(&coreFetching, 0);
+      // a tap that landed between the scan above and the flag would sit queued forever
+      bool more = false;
+      for(int k = 0; k < count; k++)
+        if(coreState[k] == CS_QUEUED) more = true;
+      if(!more || !SDL_AtomicCAS(&coreFetching, 0, 1)) break;
+      continue;
+    }
+    coreGetStart = SDL_GetTicks();
+    coreState[i] = CS_GETTING;
+    bool ok = fetchCore(all[i].core);
+    coreState[i] = ok ? CS_HAVE : CS_FAIL;
+    // one core serves several machines: the rows still waiting on this one are done too,
+    // and downloading gambatte twice for Game Boy and Game Boy Color is just wasted wifi
+    if(ok) {
+      for(int k = 0; k < count; k++) {
+        if(k != i && coreState[k] == CS_QUEUED && strcmp(all[k].core, all[i].core) == 0) coreState[k] = CS_HAVE;
+      }
+    }
+    refreshCoreStates();
+  }
+  CoUninitialize();
+  return 0;
+}
+
+static void queueCore(int i) {
+  int count = 0;
+  systems(&count);
+  if(i < 0 || i >= count || i >= MAX_SYSTEMS) return;
+  if(coreState[i] == CS_QUEUED || coreState[i] == CS_GETTING) return;
+  if(!archiveReady()) {
+    toast("needs 7-Zip to unpack the core");
+    return;
+  }
+  coreState[i] = CS_QUEUED;
+  if(SDL_AtomicCAS(&coreFetching, 0, 1)) {
+    SDL_Thread* t = SDL_CreateThread(coreFetchWorker, "corefetch", NULL);
+    if(t != NULL) {
+      SDL_DetachThread(t);
+    } else {
+      SDL_AtomicSet(&coreFetching, 0);
+      coreState[i] = CS_FAIL;
+    }
+  }
+}
+
 // Load the core this system needs, unless it is already the one we have. Cores are not
 // cheap to swap -- each brings its own GL context up and down -- so staying put while
 // the player picks another game for the same machine is worth the bookkeeping.
@@ -540,7 +659,7 @@ static bool loadRom(const Rom* rom) {
   snprintf(g.statePath, sizeof(g.statePath), "%s\\%s.state", stateDir, saveName);
   g.loaded = true;
   char title[256];
-  snprintf(title, sizeof(title), "DeckEmu - %s", rom->name);
+  snprintf(title, sizeof(title), "Cartload - %s", rom->name);
   SDL_SetWindowTitle(g.window, title);
   g.mode = MODE_GAME;
   return true;
@@ -606,7 +725,7 @@ static void layout(void) {
 
 // the rom behind row i of the library, or NULL if that row is not one
 static Rom* rowRom(int i) {
-  if(g.mode == MODE_SYSTEMS || i < 0 || i >= g.viewCount) return NULL;
+  if(g.mode != MODE_LIBRARY || i < 0 || i >= g.viewCount) return NULL;
   return &g.roms[g.view[i]];
 }
 
@@ -651,9 +770,17 @@ static void switchMode(int mode) {
   } else if(mode == MODE_LIBRARY) {
     g.sel = g.libSel;
     g.scroll = g.libScroll;
+  } else {
+    g.sel = 0;
+    g.scroll = 0;
   }
   if(g.sel >= rowCount()) g.sel = rowCount() > 0 ? rowCount() - 1 : 0;
   if(g.scroll > maxScroll()) g.scroll = maxScroll();
+}
+
+static void openCores(void) {
+  refreshCoreStates();
+  switchMode(MODE_CORES);
 }
 
 // picking a machine on the systems screen
@@ -675,6 +802,14 @@ static bool hit(SDL_Rect r, int x, int y) {
 static SDL_Rect folderButton(void) {
   int w = g.W / 6, h = g.headerH * 3 / 5;
   SDL_Rect r = {g.W - w - g.W / 40, (g.headerH - h) / 2, w, h};
+  return r;
+}
+
+// second header button on the systems screen: the core shelf
+static SDL_Rect coresButton(void) {
+  SDL_Rect r = folderButton();
+  r.w = r.w * 2 / 3;
+  r.x -= r.w + g.W / 80;
   return r;
 }
 
@@ -700,7 +835,10 @@ static void scrubTo(int y) {
 
 static int rowLetter(int i) {
   Rom* r = rowRom(i);
-  const char* s = r != NULL ? r->name : (g.present[i].sys ? g.present[i].sys->name : "All");
+  const char* s;
+  if(r != NULL) s = r->name;
+  else if(g.mode == MODE_CORES) s = systems(NULL)[i].name;
+  else s = g.present[i].sys ? g.present[i].sys->name : "All";
   return toupper((unsigned char) s[0]);
 }
 
@@ -723,20 +861,52 @@ static void jumpLetter(int dir) {
 
 // Both list screens are the same list: the machines the scan found, or the games on one
 // of them. Only where the row text comes from differs.
+static const char* coreStateText(int state, char* buf, size_t n) {
+  switch(state) {
+    case CS_HAVE: return "installed";
+    case CS_QUEUED: return "waiting";
+    case CS_FAIL: return "failed - tap to retry";
+    case CS_GETTING:
+      // no byte count: urlmon only gives one through a COM callback, and a running
+      // second counter already answers "is it stuck?".
+      // ponytail: swap URLDownloadToFile for an IBindStatusCallback if a progress bar matters
+      {
+        static const char* DOTS[] = {"", ".", "..", "..."};
+        snprintf(buf, n, "getting%s %us", DOTS[(SDL_GetTicks() / 400) % 4],
+                 (unsigned) ((SDL_GetTicks() - coreGetStart) / 1000));
+      }
+      return buf;
+  }
+  return "tap to get";
+}
+
 static void drawList(void) {
   bool sysScreen = (g.mode == MODE_SYSTEMS);
+  bool coreScreen = (g.mode == MODE_CORES);
   int rows = rowCount();
   fillRect(0, 0, g.W, g.H, 18, 20, 28, 255);
   fillRect(0, 0, g.W, g.headerH, 26, 30, 44, 255);
-  drawText(g.fTitle, sysScreen ? "DeckEmu" : (g.filter ? g.filter->name : "All systems"), g.W / 24,
-           (g.headerH - g.H / 13) / 2, COL_TEXT, 0);
+  drawText(g.fTitle, coreScreen ? "Cores" : sysScreen ? "Cartload" : (g.filter ? g.filter->name : "All systems"),
+           g.W / 24, (g.headerH - g.H / 13) / 2, COL_TEXT, 0);
   SDL_Rect fb = folderButton();
   fillRect(fb.x, fb.y, fb.w, fb.h, 44, 50, 70, 255);
   drawText(g.fSmall, sysScreen ? "Rom folder" : "Systems", fb.x + fb.w / 2, fb.y + (fb.h - g.H / 30) / 2, COL_TEXT, 1);
+  if(sysScreen) {
+    SDL_Rect cb = coresButton();
+    fillRect(cb.x, cb.y, cb.w, cb.h, 44, 50, 70, 255);
+    drawText(g.fSmall, "Cores", cb.x + cb.w / 2, cb.y + (cb.h - g.H / 30) / 2, COL_TEXT, 1);
+  }
   char sub[64];
-  if(sysScreen) snprintf(sub, sizeof(sub), "%d system%s", rows - 1, rows == 2 ? "" : "s");
+  if(coreScreen) {
+    int have = 0;
+    for(int i = 0; i < rows; i++)
+      if(coreState[i] == CS_HAVE) have++;
+    snprintf(sub, sizeof(sub), "%d of %d installed", have, rows);
+  } else if(sysScreen) snprintf(sub, sizeof(sub), "%d system%s", rows - 1, rows == 2 ? "" : "s");
   else snprintf(sub, sizeof(sub), "%d game%s", rows, rows == 1 ? "" : "s");
-  drawText(g.fSmall, sub, fb.x - g.W / 60, (g.headerH - g.H / 30) / 2, COL_DIM, 2);
+  // the count sits left of whatever buttons the header has, so it can't land under one
+  int subRight = (sysScreen ? coresButton().x : fb.x) - g.W / 60;
+  drawText(g.fSmall, sub, subRight, (g.headerH - g.H / 30) / 2, COL_DIM, 2);
 
   SDL_Rect clip = {0, g.listY, g.W, g.listH};
   SDL_RenderSetClipRect(g.ren, &clip);
@@ -774,6 +944,15 @@ static void drawList(void) {
         SDL_Rect d = {g.W / 20, y + (g.rowH - r->th) / 2, r->tw, r->th};
         SDL_RenderCopy(g.ren, r->tex, NULL, &d);
       }
+    } else if(coreScreen) { // one row per machine, right side says whether its core is here
+      const System* s = &systems(NULL)[i];
+      char buf[48];
+      const char* state = coreStateText(coreState[i], buf, sizeof(buf));
+      // two lines to a row: the machine, and under it the dll that has to be there
+      drawText(g.fRow, s->name, g.W / 20, y + g.rowH / 12, selected ? COL_ACCENT : COL_TEXT, 0);
+      drawText(g.fSmall, s->core, g.W / 20, y + g.rowH / 12 + g.H / 18, COL_DIM, 0);
+      drawText(g.fSmall, state, g.W - g.W / 12, y + (g.rowH - g.H / 30) / 2,
+               coreState[i] == CS_HAVE ? COL_TEXT : COL_DIM, 2);
     } else { // a couple of dozen machines, drawn straight
       const System* s = g.present[i].sys;
       char count[32];
@@ -820,8 +999,9 @@ static void drawList(void) {
 
   fillRect(0, g.H - g.footerH, g.W, g.footerH, 26, 30, 44, 255);
   drawText(g.fSmall,
-           sysScreen ? "Tap or A: open      Y: rom folder      B: quit      drag to scroll"
-                     : "Tap or A: play      B: systems      LB/RB: jump a letter      drag to scroll",
+           coreScreen ? "Tap or A: download that core      B: systems      drag to scroll"
+           : sysScreen ? "Tap or A: open      X: cores      Y: rom folder      B: quit      drag to scroll"
+                       : "Tap or A: play      B: systems      LB/RB: jump a letter      drag to scroll",
            g.W / 2, g.H - g.footerH + (g.footerH - g.H / 30) / 2, COL_DIM, 1);
 }
 
@@ -935,7 +1115,7 @@ static void openMenu(void) {
 static void backToLibrary(void) {
   closeRom();
   switchMode(MODE_LIBRARY);
-  SDL_SetWindowTitle(g.window, "DeckEmu");
+  SDL_SetWindowTitle(g.window, "Cartload");
 }
 
 static void activateMenu(int item) {
@@ -955,8 +1135,8 @@ static void onDirection(int id, bool pressed) {
     corePad[id] = pressed;
     return;
   }
-  if(!pressed || g.scanning) return;
-  if(g.mode == MODE_LIBRARY || g.mode == MODE_SYSTEMS) {
+  if(!pressed || (g.scanning && g.mode != MODE_CORES)) return;
+  if(isListMode()) {
     if(id == RETRO_DEVICE_ID_JOYPAD_UP) moveSel(-1);
     else if(id == RETRO_DEVICE_ID_JOYPAD_DOWN) moveSel(1);
     else if(id == RETRO_DEVICE_ID_JOYPAD_LEFT) moveSel(-(g.listH / g.rowH));
@@ -968,8 +1148,10 @@ static void onDirection(int id, bool pressed) {
 }
 
 static void onConfirm(void) {
-  if(g.scanning) return;
-  if(g.mode == MODE_SYSTEMS) {
+  if(g.scanning && g.mode != MODE_CORES) return;
+  if(g.mode == MODE_CORES) {
+    queueCore(g.sel);
+  } else if(g.mode == MODE_SYSTEMS) {
     chooseSystem(g.sel);
   } else if(g.mode == MODE_LIBRARY) {
     Rom* r = rowRom(g.sel);
@@ -980,13 +1162,27 @@ static void onConfirm(void) {
 }
 
 static void handleTouch(int x, int y, int clicks) {
-  if(g.scanning) return; // the worker owns the list right now
-  if(g.mode == MODE_SYSTEMS || g.mode == MODE_LIBRARY) {
+  if(g.scanning && g.mode != MODE_CORES) return; // the worker owns the list right now
+  if(g.mode == MODE_CORES) {
+    if(hit(folderButton(), x, y)) {
+      switchMode(MODE_SYSTEMS);
+      return;
+    }
+    if(y < g.listY || y > g.listY + g.listH) return;
+    int idx = (int) ((y - g.listY + g.scroll) / g.rowH);
+    if(idx < 0 || idx >= rowCount()) return;
+    g.sel = idx;
+    queueCore(idx);
+  } else if(g.mode == MODE_SYSTEMS || g.mode == MODE_LIBRARY) {
     // the header button is the folder picker on the systems screen and the way back
     // to it from a library
     if(hit(folderButton(), x, y)) {
       if(g.mode == MODE_SYSTEMS) chooseFolder();
       else switchMode(MODE_SYSTEMS);
+      return;
+    }
+    if(g.mode == MODE_SYSTEMS && hit(coresButton(), x, y)) {
+      openCores();
       return;
     }
     if(y < g.listY || y > g.listY + g.listH) return;
@@ -1057,6 +1253,15 @@ static LONG CALLBACK selftestVectoredCb(EXCEPTION_POINTERS* ep) {
   return EXCEPTION_CONTINUE_SEARCH;
 }
 
+// selftest only: whatever was last drawn, straight off the render target
+static void saveScreen(const char* file) {
+  SDL_Surface* shot = SDL_CreateRGBSurfaceWithFormat(0, g.W, g.H, 32, SDL_PIXELFORMAT_ARGB8888);
+  if(shot != NULL && SDL_RenderReadPixels(g.ren, NULL, shot->format->format, shot->pixels, shot->pitch) == 0) {
+    SDL_SaveBMP(shot, file);
+  }
+  SDL_FreeSurface(shot);
+}
+
 // selftest only: name the module that died, since there is no debugger on this box
 static LONG WINAPI selftestCrashCb(EXCEPTION_POINTERS* ep) {
   void* at = ep->ExceptionRecord->ExceptionAddress;
@@ -1075,7 +1280,7 @@ static LONG WINAPI selftestCrashCb(EXCEPTION_POINTERS* ep) {
 static void fatal(const char* what) {
   char msg[512];
   snprintf(msg, sizeof(msg), "%s: %s", what, SDL_GetError());
-  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "DeckEmu", msg, NULL);
+  SDL_ShowSimpleMessageBox(SDL_MESSAGEBOX_ERROR, "Cartload", msg, NULL);
   exit(1);
 }
 
@@ -1084,14 +1289,18 @@ int main(int argc, char** argv) {
   // --selftest: report which cores are actually installed, and with a rom given, boot
   // it far enough to prove a frame came back. The only part of this that can be checked
   // without sitting down with a controller.
-  bool selftest = false;
+  bool selftest = false, fetchMissing = false, shots = false;
+  const char* shotSys = NULL; // --shots <romdir> [system] [row]: which library, scrolled where
   int frames = 120; // --selftest <rom> [frames]: boot far enough in to see something
   const char* target = NULL; // a rom to boot straight into, or a library folder
   for(int i = 1; i < argc; i++) {
     if(strcmp(argv[i], "--windowed") == 0) windowed = true;
     else if(strcmp(argv[i], "--selftest") == 0) windowed = selftest = true;
+    else if(strcmp(argv[i], "--fetch") == 0) fetchMissing = true; // --selftest --fetch: download what is missing
+    else if(strcmp(argv[i], "--shots") == 0) windowed = selftest = shots = true; // screens to bmp, for the readme
     else if(target == NULL) target = argv[i];
-    else if(selftest && atoi(argv[i]) > 0) frames = atoi(argv[i]);
+    else if(selftest && atoi(argv[i]) > 0) frames = atoi(argv[i]); // shots: the row to scroll to
+    else if(shots && shotSys == NULL) shotSys = argv[i];
   }
   if(selftest) { // set up before anything else, so core startup lands in the log too
     selftestLog = fopen("selftest.log", "w");
@@ -1110,7 +1319,7 @@ int main(int argc, char** argv) {
   SDL_SetHint(SDL_HINT_RENDER_SCALE_QUALITY, "1"); // non-integer scaling on a 7" panel
 
   g.fullscreen = !windowed;
-  g.window = SDL_CreateWindow("DeckEmu", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
+  g.window = SDL_CreateWindow("Cartload", SDL_WINDOWPOS_UNDEFINED, SDL_WINDOWPOS_UNDEFINED, 1280, 720,
                               SDL_WINDOW_RESIZABLE | SDL_WINDOW_ALLOW_HIGHDPI | SDL_WINDOW_OPENGL |
                               (g.fullscreen ? SDL_WINDOW_FULLSCREEN_DESKTOP : 0));
   if(g.window == NULL) fatal("Could not create window");
@@ -1118,7 +1327,21 @@ int main(int argc, char** argv) {
   if(g.ren == NULL) fatal("Could not create renderer");
   SDL_ShowCursor(SDL_DISABLE);
 
-  char* pref = SDL_GetPrefPath("", "DeckEmu");
+  // Renamed from DeckEmu. Carry an existing handheld's saves and states over, once, and
+  // before SDL_GetPrefPath creates the new folder -- after that "is it there yet" has no
+  // answer. ponytail: delete this when no box is still coming off a DeckEmu build.
+  const char* appdata = getenv("APPDATA");
+  if(appdata != NULL) {
+    char oldPref[PATHLEN], newPref[PATHLEN];
+    snprintf(oldPref, sizeof(oldPref), "%s\\DeckEmu", appdata);
+    snprintf(newPref, sizeof(newPref), "%s\\Cartload", appdata);
+    if(GetFileAttributesA(oldPref) != INVALID_FILE_ATTRIBUTES &&
+       GetFileAttributesA(newPref) == INVALID_FILE_ATTRIBUTES) {
+      MoveFileA(oldPref, newPref);
+    }
+  }
+
+  char* pref = SDL_GetPrefPath("", "Cartload");
   snprintf(g.prefPath, sizeof(g.prefPath), "%s", pref ? pref : ".\\");
   SDL_free(pref);
   char saveDir[PATHLEN], systemDir[PATHLEN], stateDir[PATHLEN];
@@ -1144,6 +1367,55 @@ int main(int argc, char** argv) {
       fprintf(selftestLog, "%-20s %-40s %s\n", all[i].name, all[i].core, ok ? "ok" : "MISSING");
     }
     fprintf(selftestLog, "%d/%d cores installed, 7-Zip %s\n", have, count, archiveReady() ? "ok" : "MISSING");
+    if(fetchMissing) { // the queue the Cores screen feeds, drained here with nobody tapping
+      refreshCoreStates();
+      bool queued[MAX_SYSTEMS] = {false};
+      for(int i = 0; i < count && i < MAX_SYSTEMS; i++) {
+        if(coreState[i] != CS_MISSING) continue;
+        queued[i] = true;
+        queueCore(i);
+      }
+      while(SDL_AtomicGet(&coreFetching) != 0) SDL_Delay(250);
+      have = 0;
+      for(int i = 0; i < count && i < MAX_SYSTEMS; i++) {
+        have += coreState[i] == CS_HAVE;
+        if(queued[i]) {
+          fprintf(selftestLog, "fetch %-40s %s\n", all[i].core, coreState[i] == CS_HAVE ? "ok" : "FAILED");
+        }
+      }
+      fprintf(selftestLog, "%d/%d cores installed after fetching\n", have, count);
+    }
+    if(shots) { // every screen drawn to a bmp: the readme's pictures, and the only way to
+                // look at a layout on a box nobody is holding
+      layout();
+      if(target != NULL && isDir(target)) {
+        // not setRomDir(): a screenshot run has no business rewriting romdir.txt
+        snprintf(g.romDir, sizeof(g.romDir), "%s", target);
+        scanRoms(); // inline, no worker to wait on
+        buildPresent();
+        rebuildView();
+        g.mode = MODE_SYSTEMS;
+        drawList();
+        saveScreen("shot-systems.bmp");
+        int pick = 1; // row 0 is "All systems", so never that one
+        for(int i = 1; i < g.presentCount; i++) {
+          const char* name = g.present[i].sys ? g.present[i].sys->name : "";
+          // the named machine if one was asked for, else the fullest one
+          if(shotSys != NULL ? _stricmp(name, shotSys) == 0 : g.present[i].count > g.present[pick].count) pick = i;
+        }
+        chooseSystem(pick);
+        g.sel = frames < rowCount() ? frames : 0; // a library shot of row 1 is all junk names
+        g.scroll = (float) ((g.sel - 1) * g.rowH); // one row above it, so the cursor is not on the edge
+        if(g.scroll < 0) g.scroll = 0;
+        if(g.scroll > maxScroll()) g.scroll = maxScroll();
+        drawList();
+        saveScreen("shot-library.bmp");
+      }
+      openCores();
+      drawList();
+      saveScreen("shot-cores.bmp");
+      g.mode = MODE_SYSTEMS;
+    }
     int rc = 0;
     if(target != NULL && isRomPath(target)) {
       // given a rom, go the whole way: gl context, framebuffer, readback, a lit frame
@@ -1174,6 +1446,15 @@ int main(int argc, char** argv) {
           SDL_SaveBMP(s, "selftest.bmp");
           SDL_FreeSurface(s);
           free(upright);
+        }
+        if(shots) { // the frame as Cartload presents it -- aspect, flip and all -- plus the menu over it
+          layout();
+          updateFrame();
+          drawGame();
+          saveScreen("shot-game.bmp");
+          g.menuSel = 0;
+          drawMenu();
+          saveScreen("shot-menu.bmp");
         }
         fprintf(selftestLog, "frame %dx%d flipped=%d\n", w, h, (int) coreFlipped());
         if(px != NULL && w > 0) {
@@ -1254,12 +1535,13 @@ int main(int argc, char** argv) {
           } else if(down) {
             if(b == SDL_CONTROLLER_BUTTON_A || b == SDL_CONTROLLER_BUTTON_START) onConfirm();
             else if(b == SDL_CONTROLLER_BUTTON_Y && g.mode == MODE_SYSTEMS) chooseFolder();
+            else if(b == SDL_CONTROLLER_BUTTON_X && g.mode == MODE_SYSTEMS) openCores();
             else if(b == SDL_CONTROLLER_BUTTON_LEFTSHOULDER) jumpLetter(-1);
             else if(b == SDL_CONTROLLER_BUTTON_RIGHTSHOULDER) jumpLetter(1);
             else if(b == SDL_CONTROLLER_BUTTON_B) {
               // B backs out one screen at a time, and quits from the top one
               if(g.mode == MODE_MENU) g.mode = MODE_GAME;
-              else if(g.mode == MODE_LIBRARY) switchMode(MODE_SYSTEMS);
+              else if(g.mode == MODE_LIBRARY || g.mode == MODE_CORES) switchMode(MODE_SYSTEMS);
               else g.running = false;
             }
           }
@@ -1308,8 +1590,12 @@ int main(int argc, char** argv) {
           if(down && key == SDLK_ESCAPE) {
             if(g.mode == MODE_GAME) openMenu();
             else if(g.mode == MODE_MENU) g.mode = MODE_GAME;
-            else if(g.mode == MODE_LIBRARY) switchMode(MODE_SYSTEMS);
+            else if(g.mode == MODE_LIBRARY || g.mode == MODE_CORES) switchMode(MODE_SYSTEMS);
             else g.running = false;
+            break;
+          }
+          if(down && key == SDLK_c && g.mode == MODE_SYSTEMS) { // keyboard twin of pad X
+            openCores();
             break;
           }
           if(down && key == SDLK_F11) {
@@ -1424,7 +1710,7 @@ int main(int argc, char** argv) {
       }
     }
 
-    if(g.scanning && isListMode()) {
+    if(g.scanning && isListMode() && g.mode != MODE_CORES) {
       static const char* DOTS[] = {"Looking for roms", "Looking for roms.", "Looking for roms..", "Looking for roms..."};
       drawStatus(DOTS[(SDL_GetTicks() / 400) % 4], SDL_AtomicGet(&g.dirReady) ? g.romDir : g.scanArg);
     } else if(isListMode()) {

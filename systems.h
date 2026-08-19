@@ -1,4 +1,4 @@
-// The system table: what DeckEmu knows how to run, and which libretro core runs it.
+// The system table: what Cartload knows how to run, and which libretro core runs it.
 // Adding a system is one row here plus the core dll in cores\ -- nothing else.
 #ifndef SYSTEMS_H
 #define SYSTEMS_H

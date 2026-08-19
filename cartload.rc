@@ -3,12 +3,12 @@
 // the unsigned single-exe build was flagged Trojan:Win32/Bearfoos.A!ml without this.
 #include <winver.h>
 
-#define DECKEMU_VERSION 0, 1, 0, 0
-#define DECKEMU_VERSION_STR "0.1.0.0"
+#define CARTLOAD_VERSION 0, 1, 0, 0
+#define CARTLOAD_VERSION_STR "0.1.0.0"
 
 VS_VERSION_INFO VERSIONINFO
-FILEVERSION DECKEMU_VERSION
-PRODUCTVERSION DECKEMU_VERSION
+FILEVERSION CARTLOAD_VERSION
+PRODUCTVERSION CARTLOAD_VERSION
 FILEFLAGSMASK VS_FFI_FILEFLAGSMASK
 FILEFLAGS 0x0L
 FILEOS VOS_NT_WINDOWS32
@@ -20,13 +20,13 @@ BEGIN
     BLOCK "040904b0" // US English, Unicode
     BEGIN
       VALUE "CompanyName", "sp00nz"
-      VALUE "FileDescription", "DeckEmu - multi-system libretro frontend for handhelds"
-      VALUE "FileVersion", DECKEMU_VERSION_STR
-      VALUE "InternalName", "deckemu"
+      VALUE "FileDescription", "Cartload - multi-system libretro frontend for handhelds"
+      VALUE "FileVersion", CARTLOAD_VERSION_STR
+      VALUE "InternalName", "cartload"
       VALUE "LegalCopyright", "MIT licensed"
-      VALUE "OriginalFilename", "deckemu.exe"
-      VALUE "ProductName", "DeckEmu"
-      VALUE "ProductVersion", DECKEMU_VERSION_STR
+      VALUE "OriginalFilename", "cartload.exe"
+      VALUE "ProductName", "Cartload"
+      VALUE "ProductVersion", CARTLOAD_VERSION_STR
     END
   END
   BLOCK "VarFileInfo"

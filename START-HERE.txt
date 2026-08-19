@@ -1,16 +1,20 @@
-DeckEmu 0.1.0 - single exe build
+Cartload 0.1.0 - single exe build
 ================================
 
-1. Copy this whole folder to the handheld. Keep cores\ next to deckemu.exe.
-2. Run deckemu.exe. It starts fullscreen on the systems screen.
+1. Copy this whole folder to the handheld. Keep cores\ next to cartload.exe.
+2. Run cartload.exe. It starts fullscreen on the systems screen.
 3. Tap "Rom folder" and point it at your library (a mapped drive or a UNC
    path both work). It remembers the choice.
 
-deckemu.exe is self contained - no SDL DLLs, no VC++ redist needed. The
+cartload.exe is self contained - no SDL DLLs, no VC++ redist needed. The
 cores are separate on purpose: they are loaded at runtime, one per machine.
 
-Install 7-Zip on the handheld, or drop 7za.exe next to deckemu.exe. Most
+Install 7-Zip on the handheld, or drop 7za.exe next to cartload.exe. Most
 roms are .zip/.7z and without it only loose files will load.
+
+Missing a core? Tap "Cores" on the systems screen (or press X on the pad). It
+lists every machine, says which cores are installed, and downloads the ones
+that are not. Needs 7-Zip, same as the roms do.
 
 Getting around
   A / tap        open a system, then play a game
@@ -20,11 +24,12 @@ Getting around
   single tap     in-game menu
   double tap     toggle fullscreen
 
-Saves and states go to %APPDATA%\DeckEmu\, split per system, never back to
+Saves and states go to %APPDATA%\Cartload\, split per system, never back to
 the rom share.
 
 Confirmed working: SNES, NES, N64, Genesis, Master System, Game Gear,
 Game Boy, GBA, TurboGrafx-16, C64, Atari 2600, WonderSwan, MAME.
-See README.md for the full list, what needs a BIOS, and what is still broken.
+The repo has the full list in docs/systems.md, including what needs a
+BIOS and what is still broken.
 
 Note: vertical arcade cabinets (Pac-Man and friends) currently draw sideways.

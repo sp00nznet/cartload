@@ -1,5 +1,5 @@
 // Minimal libretro host. One core at a time, one game, one thread -- enough to drive
-// any of the cores in systems.c and hand DeckEmu a pixel buffer it can blit like any
+// any of the cores in systems.c and hand Cartload a pixel buffer it can blit like any
 // texture. Swapping systems means coreClose() then coreOpen() with the next dll.
 #ifndef CORE_H
 #define CORE_H

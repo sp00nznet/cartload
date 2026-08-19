@@ -1,4 +1,6 @@
 # Download every core systems.c names, from the libretro nightly buildbot, into cores\.
+# The app does this itself now -- the Cores screen, or cartload.exe --selftest --fetch.
+# This is still the way to fill cores\ before the folder is copied to the handheld.
 # Re-run it whenever a system is added to the table -- it only fetches what is missing.
 #   .\getcores.ps1              fetch the missing ones
 #   .\getcores.ps1 -Force       re-fetch everything (updates existing cores)
@@ -15,7 +17,7 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 $cores = Select-String -Path (Join-Path $root 'systems.c') -Pattern '"([a-z0-9_]+_libretro\.dll)"' -AllMatches |
   ForEach-Object { $_.Matches } | ForEach-Object { $_.Groups[1].Value } | Sort-Object -Unique
 
-$tmp = Join-Path $env:TEMP ("deckemu-cores-" + [System.Guid]::NewGuid().ToString('N'))
+$tmp = Join-Path $env:TEMP ("cartload-cores-" + [System.Guid]::NewGuid().ToString('N'))
 New-Item -ItemType Directory -Force -Path $tmp | Out-Null
 $ok = 0; $skip = 0; $fail = @()
 

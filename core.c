@@ -1,4 +1,4 @@
-// libretro host for DeckEmu.
+// libretro host for Cartload.
 //
 // The core renders with OpenGL into an FBO we own, then we read the pixels back to
 // the CPU and hand them to the UI as a plain buffer.
